@@ -1,0 +1,80 @@
+
+--- ANOMALY DETECTED (Score: 0.1319) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1351) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1111) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1605) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1348) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1599) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1062) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.0998) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.0822) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1329) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1336) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.0924) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1093) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1183) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.0896) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1074) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1137) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1083) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1732) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
+
+--- ANOMALY DETECTED (Score: 0.1891) ---
+Rationales (Top words contributing to anomaly):
+------------------------------
