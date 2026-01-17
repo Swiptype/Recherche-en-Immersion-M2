@@ -9,7 +9,7 @@ Il inclut notamment également un module d'explicabilité pour visualiser pourqu
 
 =================================================================================================================================================================================================================================
 
-ACTUEL : recherche_v5.py
+Code : recherche_v5.py
 
 Architecture du Modèle : Deep SVDD
 
@@ -114,16 +114,38 @@ C'est l'écart-type sur les 5 essais. Cela mesure la fiabilité de l'entraîneme
 
 
 
+=================================================================================================================================================================================================================================
+
+
+Code : exp_1/2/3
+
+Stop Words : Suppression du filtrage if word.lower() not in stop_words. Le modèle verra désormais "the", "and", etc.
+
+Ratio 90/10 : Dans la phase de test, le script prend désormais toutes les données normales de test disponibles, et ajoute exactement assez d'anomalies pour qu'elles représentent 10% du total.
 
 
 
+exp_1_sans_rationales.py : 
+
+Question : "Que se passe-t-il si on supprime les mots que le modèle juge importants ?" 
+Logique : Ce script entraîne le modèle normalement. Ensuite, pour chaque texte de test, il identifie les 20% des mots les plus importants (les "rationales" selon Integrated Gradients) et les remplace par du vide (Padding). Il recalcule ensuite le score d'anomalie. 
+Attendu : Si l'explication est bonne, le score d'anomalie devrait chuter (le texte devient "neutre") ou l'AUC devrait s'effondrer car le modèle perd ses repères.
 
 
 
+exp2_seulement_rationales.py :
+
+Question : "Que se passe-t-il si on ne garde QUE les mots importants ?" 
+Logique : Inverse du précédent. On identifie les top 20% des tokens et on masque TOUT le reste (les 80% restants sont remplacés par du padding). 
+Attendu : Si l'explication est "fidèle", l'AUC devrait rester très élevée, voire identique à la baseline, car le bruit a été supprimé et l'information clé (le "rationale") est toujours là.
 
 
 
+exp3_top_influencers.py :
 
+Question : "Quels sont les tokens qui changent une classe ?" 
+Logique : Le script calcule les attributions (influence) de chaque mot du vocabulaire sur l'ensemble du jeu de test. Il accumule les scores. Il sépare les scores pour les textes normaux et les anomalies.Il affiche les mots qui ont le plus fort impact pour pousser vers l'anomalie (High Gradient Magnitude). 
+Résultat : Une liste de mots du type : "Mots qui rendent comp.graphics anormal : 'god', 'president', 'gun', 'medicine'..."
 
 
 
