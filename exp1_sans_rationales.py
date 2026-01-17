@@ -7,26 +7,33 @@ from sklearn.datasets import fetch_20newsgroups
 from sklearn.metrics import roc_auc_score
 import random
 import pandas as pd
+import numpy as np
 from captum.attr import IntegratedGradients
+import csv
+import os
 
 # --- Configuration ---
-CATEGORY_NORMAL = 'comp.graphics'
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 BATCH_SIZE = 16
 LEARNING_RATE = 1e-4
 NUM_EPOCHS = 5
 LATENT_DIM = 64
 MAX_LEN = 128
 UNFREEZE_AFTER_EPOCH = 2
-RATIONALE_PERCENTAGE = 0.20 
+RATIONALE_PERCENTAGE = 0.20
+NUM_RUNS = 5 
 
+# Fichiers de sortie
+FILE_SUMMARY = "results_exp1_summary.csv"
+FILE_DETAILS = "results_exp1_details.csv"
+
+# --- Modèle ---
 class DeepSVDD(nn.Module):
     def __init__(self):
         super(DeepSVDD, self).__init__()
         self.bert = DistilBertModel.from_pretrained('distilbert-base-uncased')
         self.projection = nn.Sequential(nn.Linear(768, 256), nn.ReLU(), nn.Dropout(0.1), nn.Linear(256, LATENT_DIM))
     def forward(self, input_ids=None, attention_mask=None, inputs_embeds=None):
-        # Modification pour accepter soit input_ids soit inputs_embeds
         if inputs_embeds is not None:
              outputs = self.bert(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
         else:
@@ -42,43 +49,45 @@ class TextDataset(Dataset):
     def __getitem__(self, item):
         text = " ".join(str(self.texts[item]).split()) 
         encoding = self.tokenizer.encode_plus(text, add_special_tokens=True, max_length=self.max_len, padding='max_length', truncation=True, return_attention_mask=True, return_tensors='pt')
-        return {'input_ids': encoding['input_ids'].flatten(), 'attention_mask': encoding['attention_mask'].flatten()}
+        return {'input_ids': encoding['input_ids'].flatten(), 'attention_mask': encoding['attention_mask'].flatten(), 'raw_text': text}
 
-def run_experiment():
-    print(f"--- Experiment 1: Removing Rationales (Category: {CATEGORY_NORMAL}) ---")
+def train_and_evaluate(category, run_id, all_data, all_targets, target_names):
+    print(f"   Run {run_id+1}/{NUM_RUNS}...")
     
-    # Data Setup
-    newsgroups = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))
-    data = pd.DataFrame({'text': newsgroups.data, 'target': newsgroups.target})
-    target_idx = newsgroups.target_names.index(CATEGORY_NORMAL)
-    normal_data = data[data['target'] == target_idx]['text'].tolist()
-    anomaly_data = data[data['target'] != target_idx]['text'].tolist()
+    # 1. Data Prep
+    target_idx = target_names.index(category)
+    normal_mask = (all_targets == target_idx)
+    normal_data = [text for text, is_normal in zip(all_data, normal_mask) if is_normal]
+    anomaly_data = [text for text, is_normal in zip(all_data, normal_mask) if not is_normal]
     
     split_idx = int(0.8 * len(normal_data))
-    train_normal, test_normal = normal_data[:split_idx], normal_data[split_idx:]
-    n_anomalies_needed = int(len(test_normal) / 9)
-    test_anomalies = random.sample(anomaly_data, min(n_anomalies_needed, len(anomaly_data)))
+    train_normal = normal_data[:split_idx]
+    test_normal = normal_data[split_idx:]
+    
+    # Ratio 90% Normal / 10% Anomaly
+    n_anomalies = int(len(test_normal) / 9)
+    test_anomalies = random.sample(anomaly_data, min(n_anomalies, len(anomaly_data)))
     
     test_texts = test_normal + test_anomalies
-    test_labels = [0] * len(test_normal) + [1] * len(test_anomalies)
+    test_labels = [0] * len(test_normal) + [1] * len(test_anomalies) # 0=Normal, 1=Anomaly
     
     tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
     train_loader = DataLoader(TextDataset(train_normal, tokenizer, MAX_LEN), batch_size=BATCH_SIZE, shuffle=True)
     test_loader = DataLoader(TextDataset(test_texts, tokenizer, MAX_LEN), batch_size=1, shuffle=False)
     
-    model = DeepSVDD().to(device)
+    # 2. Train
+    model = DeepSVDD().to(DEVICE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     # Init Center
     model.eval()
-    c = torch.zeros(LATENT_DIM).to(device)
+    c = torch.zeros(LATENT_DIM).to(DEVICE)
     with torch.no_grad():
         for batch in train_loader:
-            c += model(input_ids=batch['input_ids'].to(device), attention_mask=batch['attention_mask'].to(device)).sum(dim=0)
+            c += model(input_ids=batch['input_ids'].to(DEVICE), attention_mask=batch['attention_mask'].to(DEVICE)).sum(dim=0)
             break 
     c /= BATCH_SIZE
     
-    print("Training...")
     for epoch in range(NUM_EPOCHS):
         model.train()
         if epoch >= UNFREEZE_AFTER_EPOCH:
@@ -87,66 +96,111 @@ def run_experiment():
              for param in model.bert.parameters(): param.requires_grad = False
         for batch in train_loader:
             optimizer.zero_grad()
-            out = model(input_ids=batch['input_ids'].to(device), attention_mask=batch['attention_mask'].to(device))
+            out = model(input_ids=batch['input_ids'].to(DEVICE), attention_mask=batch['attention_mask'].to(DEVICE))
             loss = torch.mean(torch.sum((out - c) ** 2, dim=1))
             loss.backward()
             optimizer.step()
 
-    # --- CORRECTION IG ---
-    # On utilise IntegratedGradients directement sur les embeddings calculés manuellement
-    ig = IntegratedGradients(model) 
-
+    # 3. Evaluation & Interpretation
+    model.eval()
     scores_baseline = []
     scores_removed = []
+    details_log = []
     
-    print("Evaluating...")
-    model.eval()
+    def forward_score(inputs_embeds, attention_mask):
+        out = model(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+        return torch.sum((out - c) ** 2, dim=1)
+    
+    ig = IntegratedGradients(forward_score)
+    
     for i, batch in enumerate(test_loader):
-        input_ids = batch['input_ids'].to(device)
-        mask = batch['attention_mask'].to(device)
+        input_ids = batch['input_ids'].to(DEVICE)
+        mask = batch['attention_mask'].to(DEVICE)
         
-        # 1. Calcul Baseline
+        # Baseline
         with torch.no_grad():
-            out = model(input_ids=input_ids, attention_mask=mask)
-            scores_baseline.append(torch.sum((out - c) ** 2, dim=1).item())
-
-        # 2. Calculer les embeddings manuellement
-        # input_ids est [1, 128], embeddings_list est [1, 128, 768]
+            score_base = model(input_ids=input_ids, attention_mask=mask).pow(2).sum(1).item()
+            scores_baseline.append(score_base)
+            
+        # IG Attribution
         embeddings_list = model.bert.embeddings.word_embeddings(input_ids)
+        attributions = ig.attribute(inputs=embeddings_list, additional_forward_args=(mask), n_steps=10)
+        token_importance = attributions.sum(dim=2)
         
-        # 3. Appliquer IG sur ces embeddings
-        # On définit une fonction cible pour IG qui calcule la distance au centre
-        def forward_score(inputs_embeds, attention_mask):
-            out = model(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
-            return torch.sum((out - c) ** 2, dim=1)
-
-        ig_manual = IntegratedGradients(forward_score)
-        
-        attributions = ig_manual.attribute(
-            inputs=embeddings_list,
-            additional_forward_args=(mask),
-            n_steps=10 # Réduit pour la vitesse
-        )
-        
-        # 4. Trouver les Top K tokens
-        token_importance = attributions.sum(dim=2) # Somme sur la dimension embedding (768) -> [1, 128]
+        # Identify Top K
         k = int(MAX_LEN * RATIONALE_PERCENTAGE)
         top_val, top_idx = torch.topk(token_importance, k, dim=1)
+        top_indices = top_idx[0].tolist()
         
-        # 5. Masking (Suppression des rationales)
+        # Remove Rationales
         modified_input_ids = input_ids.clone()
-        for idx in top_idx[0]:
+        removed_tokens = []
+        all_tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
+        
+        for idx in top_indices:
+            if idx < len(all_tokens):
+                removed_tokens.append(all_tokens[idx])
             modified_input_ids[0, idx] = 0 # PAD
             
         with torch.no_grad():
-            out_removed = model(input_ids=modified_input_ids, attention_mask=mask)
-            scores_removed.append(torch.sum((out_removed - c) ** 2, dim=1).item())
-            
+            score_removed = model(input_ids=modified_input_ids, attention_mask=mask).pow(2).sum(1).item()
+            scores_removed.append(score_removed)
+        
+        # Save details
+        is_anomaly = test_labels[i] == 1
+        if i < 5 or (is_anomaly and i < (len(test_normal) + 5)):
+            details_log.append([category, run_id, i, "Anomaly" if is_anomaly else "Normal", score_base, score_removed, removed_tokens])
+
     auc_base = roc_auc_score(test_labels, scores_baseline)
     auc_removed = roc_auc_score(test_labels, scores_removed)
-    print(f"Baseline AUC: {auc_base:.4f}")
-    print(f"Without Rationales AUC: {auc_removed:.4f}")
-    print(f"Drop: {auc_base - auc_removed:.4f}")
+    
+    return auc_base, auc_removed, details_log
+
+def main():
+    # Load Data once
+    newsgroups = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))
+    all_data = newsgroups.data
+    all_targets = newsgroups.target
+    target_names = newsgroups.target_names
+    
+    # Init CSVs
+    with open(FILE_SUMMARY, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Category", "AUC_Base_Mean", "AUC_Base_Std", "AUC_Removed_Mean", "AUC_Removed_Std", "Drop_Mean"])
+        
+    with open(FILE_DETAILS, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Category", "Run_ID", "Sample_ID", "Label", "Score_Original", "Score_Removed", "Removed_Rationales"])
+
+    # Loop Categories
+    for cat in target_names:
+        print(f"Processing Category: {cat}")
+        base_aucs = []
+        removed_aucs = []
+        
+        for run in range(NUM_RUNS):
+            ab, ar, logs = train_and_evaluate(cat, run, all_data, all_targets, target_names)
+            base_aucs.append(ab)
+            removed_aucs.append(ar)
+            
+            # Write details immediately
+            with open(FILE_DETAILS, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerows(logs)
+        
+        # Stats
+        mean_base = np.mean(base_aucs)
+        std_base = np.std(base_aucs)
+        mean_rem = np.mean(removed_aucs)
+        std_rem = np.std(removed_aucs)
+        drop = mean_base - mean_rem
+        
+        # Write Summary
+        with open(FILE_SUMMARY, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([cat, mean_base, std_base, mean_rem, std_rem, drop])
+            
+        print(f"  > Done. Base: {mean_base:.3f}, Removed: {mean_rem:.3f}")
 
 if __name__ == "__main__":
-    run_experiment()
+    main()
