@@ -26,7 +26,7 @@ HIDDEN_DIM = 256
 NU = 0.1
 UNFREEZE_AFTER_EPOCH = 2
 NUM_RUNS = 5
-OUTPUT_FILE = "rationales.txt"
+OUTPUT_FILE = "rationales_question2.txt"
 
 # --- 1. Dataset ---
 class TextDataset(Dataset):
