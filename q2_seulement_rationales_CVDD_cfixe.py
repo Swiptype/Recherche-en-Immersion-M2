@@ -23,8 +23,8 @@ RATIONALE_PERCENTAGE = 0.20
 NUM_RUNS = 5 
 SUPER_CATEGORIES = ['alt', 'comp', 'misc', 'rec', 'sci', 'soc', 'talk']
 
-FILE_SUMMARY = "results_root_exp2_summary.csv"
-FILE_DETAILS = "results_root_exp2_details.csv"
+FILE_SUMMARY = "results_root_exp2_cfixe_summary.csv"
+FILE_DETAILS = "results_root_exp2_cfixe_details.csv"
 
 # --- Modèle CVDD ---
 class CVDD(nn.Module):

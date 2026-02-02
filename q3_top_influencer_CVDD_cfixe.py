@@ -21,7 +21,7 @@ UNFREEZE_AFTER_EPOCH = 2
 NUM_RUNS = 5
 SUPER_CATEGORIES = ['alt', 'comp', 'misc', 'rec', 'sci', 'soc', 'talk']
 
-FILE_TOKENS = "results_root_exp3_tokens.csv"
+FILE_TOKENS = "results_root_exp3_cfixe_tokens.csv"
 
 # --- Modèle CVDD ---
 class CVDD(nn.Module):
